@@ -1,37 +1,57 @@
-# Planning: Setup Project Backend (Bun + ElysiaJS + Drizzle + MySQL)
+# Implementasi Fitur Registrasi User
 
-Dokumen ini adalah issue/planning untuk melakukan setup awal project backend. Silakan ikuti instruksi high-level di bawah ini untuk mengimplementasikannya.
+Dokumen ini berisi perencanaan (issue) untuk mengimplementasikan fitur pembuatan user (registrasi) baru. Silakan baca dan ikuti langkah-langkah di bawah ini secara berurutan.
 
-## 1. Inisialisasi Project
-*   Inisialisasi sebuah project web menggunakan **Bun** di direktori ini.
-*   Pastikan file konfigurasi dasar seperti `package.json` dan `tsconfig.json` sudah dibuat.
+## 1. Pembaruan Skema Database (Tabel Users)
+Ubah file skema Drizzle ORM (biasanya di `src/db/schema.ts`) agar tabel `users` memiliki kolom-kolom berikut:
+- `id`: integer, auto increment, sebagai primary key.
+- `name`: varchar(255), tidak boleh kosong (not null).
+- `email`: varchar(255), tidak boleh kosong (not null), dan harus unique.
+- `password`: varchar(255), tidak boleh kosong (not null). (Kolom ini ditujukan untuk meyimpan hash password).
+- `created_at`: timestamp, nilai default-nya adalah waktu saat baris ini dibuat (`now()`).
+- `updated_at`: timestamp, nilai default-nya adalah waktu saat baris ini dibuat (`now()`), atau ter-update saat ada pembaruan data.
 
-## 2. Instalasi Dependencies
-*   Tambahkan dependencies utama yang dibutuhkan:
-    *   **ElysiaJS** sebagai framework backend.
-    *   **Drizzle ORM** sebagai ORM.
-    *   **Drizzle Kit** (sebagai dev dependency) untuk manajemen migrasi.
-    *   Driver database **MySQL** yang kompatibel dengan Bun/Drizzle (misalnya `mysql2`).
+*(Catatan: Setelah memperbarui skema ini, jangan lupa untuk membuat dan menjalankan migrasi ke database).*
 
-## 3. Konfigurasi Database
-*   Siapkan folder/file khusus untuk database (misalnya di dalam `src/db`).
-*   Buat file skema Drizzle (schema) dan definisikan setidaknya satu tabel contoh, seperti tabel `users`.
-*   Buat file koneksi database yang menginisialisasi Drizzle ORM dengan driver MySQL, menggunakan *connection string* dari environment variable (`.env`).
-*   Buat file `drizzle.config.ts` di root project untuk mengatur konfigurasi skema dan output migrasi Drizzle.
-*   Tambahkan command scripts di `package.json` untuk mempermudah proses migrasi (misalnya script untuk `generate` dan `migrate/push`).
+## 2. Pengaturan Struktur Folder
+Kita perlu membuat kode lebih modular. Di dalam direktori `src`, buatlah struktur folder berikut:
+- `src/routes/`: Folder ini dikhususkan untuk menyimpan deklarasi endpoint routing dari framework ElysiaJS.
+- `src/services/`: Folder ini dikhususkan untuk menyimpan atau mengeksekusi logik bisnis (business logic) aplikasi, termasuk interaksi ke database.
 
-## 4. Setup Server Aplikasi
-*   Buat entry point server Elysia (misalnya `src/index.ts`).
-*   Jalankan server Elysia pada port yang ditentukan.
-*   Buat beberapa endpoint dasar:
-    *   Health check endpoint (`GET /`) untuk memastikan server up.
-    *   Buat integrasi route yang menggunakan koneksi Drizzle database untuk melakukan operasi dasar (misal read atau insert ke tabel contoh).
+## 3. Implementasi Logic (ServiceLayer)
+Buat file logic di dalam folder services (misalnya `src/services/userService.ts`). Tugas service ini adalah:
+1. Menerima payload dari user berupa `name`, `email`, dan `password`.
+2. Melakukan proses hashing pada `password`. Anda dapat menggunakan library seperti `bcrypt`, `bcryptjs`, atau bawaan hashing native dari `Bun.password`.
+3. Menyimpan/insert data pendaftar baru tersebut ke dalam tabel `users`.
+4. Mengembalikan data user yang berhasil disimpan, namun **Wajib menghilangkan (exclude) kolom password** demi keamanan.
 
-## 5. Merapikan Struktur & Konfigurasi Ekstra
-*   Pisahkan routing/controller dari logic database agar modular.
-*   Pastikan ada script npm/bun untuk menjalankan server dalam mode development dengan fitur *hot-reload*.
-*   Buat file `.env.example` sebagai template berisi proxy koneksi database MySQL.
+## 4. Implementasi Endpoint API (Route Layer)
+Buat file route di dalam folder routes (misalnya `src/routes/userRoute.ts`). 
+- **Method & Endpoint**: `POST /api/users`
+- **Request Body (JSON)**:
+  - `name` (string, wajib)
+  - `email` (string, wajib, format email valid)
+  - `password` (string, wajib)
+- **Response Body - Sukses (JSON)**:
+  ```json
+  {
+    "id": 1,
+    "name": "John Doe",
+    "email": "johndoe@example.com",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z"
+  }
+  ```
+- **Response Body - Error (JSON)**:
+  Jika input tidak lengkap atau email sudah digunakan, maka kembalikan respons error:
+  ```json
+  {
+    "error": "Penjelasan pesan error (contoh: Email sudah terdaftar atau input tidak valid)"
+  }
+  ```
 
----
-**Catatan untuk Implementor:**
-Tujuan utama dari task ini hanya menyediakan *boilerplate* dasar yang bersih (*clean*) dan dapat berjalan tanpa error. Detail business logic yang kompleks belum perlu dibuat.
+*Tugas pada route:*
+Lakukan validasi skema input body (disarankan menggunakan validasi type dari ElysiaJS `t.Object`), lalu teruskan payload tervalidasi ke fungsi service layer. Tangkap response dari validasi/service, kemudian kembalikan respons HTTP yang sesuai.
+
+## 5. Integrasi ke Entry Point Server
+Buka file `src/index.ts` dan import routing yang sudah dibuat dari `src/routes/userRoute.ts`. Pasang (register) route tersebut ke instance Elysia utama agar URL `/api/users` bisa diakses melalui web server.
